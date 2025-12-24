@@ -1,0 +1,11 @@
+node_modules/
+dist/
+docs/
+.env
+.DS_Store
+*.log
+*.md
+coverage/
+.vscode/
+.idea/
+
