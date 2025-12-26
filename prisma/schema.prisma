@@ -17,6 +17,7 @@ model SystemConfig {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  @@index([isInitialized])
   @@map("system_config")
 }
 
@@ -26,12 +27,17 @@ model Tenant {
   slug      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
 
   users       User[]
   roles       Role[]
   permissions Permission[]
 
   @@index([slug])
+  @@index([createdAt])
+  @@index([deletedAt])
   @@map("tenants")
 }
 
@@ -45,6 +51,9 @@ model User {
   isSuperAdmin Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  createdBy    String?  @map("created_by")
+  updatedBy    String?  @map("updated_by")
+  deletedAt    DateTime? @map("deleted_at")
 
   tenant         Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userRoles      UserRole[]
@@ -55,6 +64,7 @@ model User {
   @@index([email, tenantId])
   @@index([tenantId, createdAt])
   @@index([isSuperAdmin])
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -82,6 +92,7 @@ model UserProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, createdAt])
   @@map("user_profiles")
 }
 
@@ -92,6 +103,9 @@ model Role {
   tenantId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  createdBy   String?  @map("created_by")
+  updatedBy   String?  @map("updated_by")
+  deletedAt   DateTime? @map("deleted_at")
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rolePermissions RolePermission[]
@@ -100,6 +114,7 @@ model Role {
   @@unique([name, tenantId])
   @@index([tenantId, name])
   @@index([tenantId, createdAt])
+  @@index([deletedAt])
   @@map("roles")
 }
 
@@ -110,6 +125,9 @@ model Permission {
   action      String
   description String?
   tenantId    String
+  createdBy   String?  @map("created_by")
+  updatedBy   String?  @map("updated_by")
+  deletedAt   DateTime? @map("deleted_at")
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rolePermissions RolePermission[]
@@ -117,6 +135,8 @@ model Permission {
   @@unique([name, tenantId])
   @@index([tenantId])
   @@index([tenantId, resource])
+  @@index([resource, action])
+  @@index([deletedAt])
   @@map("permissions")
 }
 
@@ -128,6 +148,7 @@ model RolePermission {
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+  @@index([roleId])
   @@map("role_permissions")
 }
 
@@ -139,6 +160,8 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
   @@map("user_roles")
 }
 
@@ -158,11 +181,11 @@ model RefreshToken {
 
 model PasswordResetToken {
   id        String    @id @default(uuid())
-  userId    String
+  userId    String    @map("user_id")
   token     String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

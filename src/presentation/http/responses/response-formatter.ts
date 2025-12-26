@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { ApiResponse } from '../../../shared/types';
+import { CsrfMiddleware } from '../middleware/csrf.middleware';
 
 export class ResponseFormatter {
   static success<T>(
@@ -14,6 +15,13 @@ export class ResponseFormatter {
       statusCode,
       results: data,
     };
+    
+    // Include CSRF token in response headers
+    const csrfToken = res.locals.csrfToken;
+    if (csrfToken) {
+      res.setHeader('X-CSRF-Token', csrfToken);
+    }
+    
     return res.status(statusCode).json(response);
   }
 
@@ -31,7 +39,21 @@ export class ResponseFormatter {
       errors,
       stackTrace: process.env.NODE_ENV === 'development' ? stackTrace : undefined,
     };
+    
+    // Include CSRF token in response headers even for errors
+    const csrfToken = res.locals.csrfToken;
+    if (csrfToken) {
+      res.setHeader('X-CSRF-Token', csrfToken);
+    }
+    
     return res.status(statusCode).json(response);
+  }
+
+  /**
+   * Get CSRF token from response locals
+   */
+  static getCsrfToken(res: Response): string | undefined {
+    return res.locals.csrfToken;
   }
 }
 

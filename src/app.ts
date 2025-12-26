@@ -12,8 +12,13 @@ import { initializeContainer } from './infrastructure/di/container';
 import { eventBus } from './infrastructure/events/event-bus';
 import { UserCreatedHandler } from './infrastructure/events/handlers/user-created.handler';
 import { TenantCreatedHandler } from './infrastructure/events/handlers/tenant-created.handler';
+import { Logger, createRequestLoggingMiddleware, createErrorLoggingMiddleware } from './infrastructure/logging/logger';
+import { createMetricsRoutes } from './presentation/http/routes/metrics.routes';
 
 dotenv.config();
+
+// Initialize Logger
+Logger.initialize();
 
 // Initialize Dependency Injection Container FIRST (before any route imports)
 initializeContainer();
@@ -53,10 +58,15 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  maxAge: 86400, // 24 hours
+  maxAge: 86400,
 }));
 
+// Request logging middleware
+app.use(createRequestLoggingMiddleware());
+
+// Morgan for additional logging (optional)
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -72,23 +82,75 @@ app.use('/api-docs/latest', swaggerUi.serve, swaggerUi.setup(swaggerSpecV1));
 app.use('/api/v1', versionMiddleware, v1Routes);
 app.use('/api/latest', versionMiddleware, v1Routes);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// Metrics routes
+app.use(createMetricsRoutes());
+
+// Error logging middleware
+app.use(createErrorLoggingMiddleware());
 
 // Error handling
 app.use(ErrorHandler.handle);
+
+// Graceful shutdown
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+async function gracefulShutdown(signal: string) {
+  console.log(`${signal} received, shutting down gracefully...`);
+  
+  // Stop accepting new connections
+  const server = (app as any)._server;
+  if (server) {
+    server.close(async () => {
+      console.log('Server closed');
+      
+      // Close database connection
+      try {
+        const { PrismaClient } = await import('@prisma/client');
+        const prisma = new PrismaClient();
+        await prisma.$disconnect();
+        console.log('Database disconnected');
+      } catch (error) {
+        console.error('Error disconnecting database:', error);
+      }
+      
+      // Flush logs (only if file transports exist)
+      try {
+        if (process.env.NODE_ENV === 'production') {
+          await Logger.flush();
+        }
+      } catch (error) {
+        // Ignore flush errors during shutdown
+      }
+      
+      console.log('Graceful shutdown complete');
+      process.exit(0);
+    });
+    
+    // Force shutdown after timeout
+    setTimeout(() => {
+      console.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 30000);
+  }
+}
 
 // Start server
 async function startServer() {
   try {
     await connectDatabase();
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+    const server = app.listen(PORT, () => {
+      Logger.info(`Server is running on port ${PORT}`, {
+        port: PORT,
+        environment: process.env.NODE_ENV || 'development',
+        version: process.env.APP_VERSION || '1.0.0',
+      });
     });
+    
+    // Store server reference for graceful shutdown
+    (app as any)._server = server;
   } catch (error) {
-    console.error('Failed to start server:', error);
+    Logger.error('Failed to start server', error);
     process.exit(1);
   }
 }

@@ -107,6 +107,15 @@ export class UserController {
    *       200:
    *         description: Users retrieved successfully
    */
+  async getMe(req: RequestWithUser, res: Response, next: NextFunction): Promise<Response | void> {
+    try {
+      const result = await this.getUserUseCase.execute(req.user!.userId, req.tenantId!);
+      return ResponseFormatter.success(res, result, 'Current user retrieved successfully', 200);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getAll(req: RequestWithUser, res: Response, next: NextFunction): Promise<Response | void> {
     try {
       // Super admin can specify tenantId in query params, otherwise use their tenant

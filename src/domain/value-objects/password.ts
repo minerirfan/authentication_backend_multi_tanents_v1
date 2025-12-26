@@ -1,25 +1,32 @@
 import { ValidationException } from '../exceptions/domain-exceptions';
+import { validatePasswordPolicy, passwordPolicy } from '../../config/password-policy.config';
 
 export class Password {
   private readonly value: string;
 
   constructor(password: string, isHashed: boolean = false) {
-    if (!isHashed && !this.isValid(password)) {
-      throw new ValidationException(
-        'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number'
-      );
+    if (!isHashed) {
+      const validation = validatePasswordPolicy(password);
+      if (!validation.isValid) {
+        throw new ValidationException(
+          `Password requirements: ${passwordPolicy.minLength}+ characters, ` +
+          `${passwordPolicy.requireUppercase ? 'uppercase, ' : ''}` +
+          `${passwordPolicy.requireLowercase ? 'lowercase, ' : ''}` +
+          `${passwordPolicy.requireNumber ? 'number, ' : ''}` +
+          `${passwordPolicy.requireSpecialChar ? `special char (${passwordPolicy.allowedSpecialChars})` : ''}`
+        );
+      }
     }
     this.value = password;
   }
 
+  /**
+   * Validate password against centralized policy
+   * This method is kept for backward compatibility but delegates to policy config
+   */
   private isValid(password: string): boolean {
-    if (password.length < 8) {
-      return false;
-    }
-    const hasUpperCase = /[A-Z]/.test(password);
-    const hasLowerCase = /[a-z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    return hasUpperCase && hasLowerCase && hasNumber;
+    const validation = validatePasswordPolicy(password);
+    return validation.isValid;
   }
 
   getValue(): string {

@@ -4,6 +4,7 @@ import { IUserRoleRepository } from '../../../domain/repositories/iuser-role-rep
 import { JwtService } from '../../../infrastructure/external/jwt.service';
 import { UnauthorizedException, NotFoundException } from '../../../domain/exceptions/domain-exceptions';
 import { RefreshTokenDto, AuthResponseDto } from '../../dto/auth.dto';
+import { Logger } from '../../../infrastructure/logging/logger';
 
 export class RefreshTokenUseCase {
   constructor(
@@ -13,17 +14,22 @@ export class RefreshTokenUseCase {
   ) { }
 
   async execute(dto: RefreshTokenDto): Promise<AuthResponseDto> {
+    Logger.debug('Refreshing token', { userId: 'unknown' });
+    
     // Verify refresh token
     let payload;
     try {
-      payload = JwtService.verifyToken(dto.refreshToken);
-    } catch {
+      payload = JwtService.verifyRefreshToken(dto.refreshToken);
+      Logger.debug('Refresh token verified', { userId: payload.userId });
+    } catch (error) {
+      Logger.error('Failed to verify refresh token', error);
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     // Check if token exists in database
     const tokenData = await this.tokenRepository.findByToken(dto.refreshToken);
     if (!tokenData) {
+      Logger.warn('Refresh token not found in database', { userId: payload?.userId });
       throw new UnauthorizedException('Refresh token not found or expired');
     }
 

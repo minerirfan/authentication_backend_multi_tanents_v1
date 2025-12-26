@@ -6,6 +6,7 @@ import { IPasswordDomainService } from '../../../domain/services/ipassword-domai
 import { JwtService } from '../../../infrastructure/external/jwt.service';
 import { UnauthorizedException, NotFoundException } from '../../../domain/exceptions/domain-exceptions';
 import { LoginDto, AuthResponseDto } from '../../dto/auth.dto';
+import { Logger } from '../../../infrastructure/logging/logger';
 
 export class LoginUseCase {
   constructor(
@@ -17,11 +18,14 @@ export class LoginUseCase {
   ) { }
 
   async execute(dto: LoginDto): Promise<AuthResponseDto> {
+    Logger.info('User login attempt', { email: dto.email });
+    
     // Find tenant if slug provided
     let tenantId: string | null = null;
     if (dto.tenantSlug) {
       const tenant = await this.tenantRepository.findBySlug(dto.tenantSlug);
       if (!tenant) {
+        Logger.warn('Tenant not found', { tenantSlug: dto.tenantSlug });
         throw new NotFoundException('Tenant', dto.tenantSlug);
       }
       tenantId = tenant.id;
@@ -33,18 +37,24 @@ export class LoginUseCase {
       user = await this.userRepository.findByEmail(dto.email, tenantId);
     } else {
       // Try to find user across all tenants (for initial login)
-      // Get all users with this email (no tenant filter)
+      // Use efficient single query instead of N+1 pattern
+      const minimalUser = await this.userRepository.findByEmailOnly(dto.email);
+
+      if (!minimalUser) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      // Check if user exists in multiple tenants
       const allUsersResult = await this.userRoleRepository.getUsersWithRoles(null, { page: 1, limit: 100 });
       const usersWithEmail = allUsersResult.data.filter(u => u.email === dto.email);
 
-      if (usersWithEmail.length === 0) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
       if (usersWithEmail.length > 1) {
         throw new UnauthorizedException('Multiple tenants found. Please specify tenant slug.');
       }
-      user = await this.userRepository.findByEmail(dto.email, usersWithEmail[0].tenantId || null);
-      tenantId = usersWithEmail[0].tenantId;
+
+      // Fetch full user with password
+      user = await this.userRepository.findByEmail(dto.email, minimalUser.tenantId);
+      tenantId = minimalUser.tenantId;
     }
 
     if (!user) {
@@ -58,8 +68,11 @@ export class LoginUseCase {
     );
 
     if (!isValid) {
+      Logger.warn('Invalid password attempt', { email: dto.email });
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    Logger.info('User authenticated successfully', { userId: user.id, email: user.email.getValue() });
 
     // Get user roles and permissions
     let roles: string[] = [];
@@ -96,6 +109,8 @@ export class LoginUseCase {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
     await this.tokenRepository.save(refreshToken, user.id, expiresAt);
+    
+    Logger.info('Tokens generated successfully', { userId: user.id });
 
     return {
       accessToken,

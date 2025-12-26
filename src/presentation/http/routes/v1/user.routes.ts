@@ -14,6 +14,7 @@ export function createUserRoutes(): Router {
   // Tenant middleware allows super admin to bypass
   router.use(TenantMiddleware.extractTenant);
 
+  router.get('/me', generalRateLimiter, userController.getMe.bind(userController));
   router.get('/', generalRateLimiter, userController.getAll.bind(userController));
   router.get('/:id', generalRateLimiter, userController.getById.bind(userController));
   router.post(

@@ -2,6 +2,7 @@ import { ITokenRepository } from '../../domain/repositories/itoken-repository';
 import { ICacheRepository } from '../../domain/repositories/icache-repository';
 import { prisma } from '../config/database';
 import { jwtConfig } from '../config/jwt.config';
+import { Logger } from '../logging/logger';
 import crypto from 'crypto';
 
 export class TokenRepository implements ITokenRepository {
@@ -13,6 +14,7 @@ export class TokenRepository implements ITokenRepository {
     return `token:${token}`;
   }
   async save(token: string, userId: string, expiresAt: Date): Promise<void> {
+    Logger.debug('Saving refresh token', { userId });
     await prisma.refreshToken.create({
       data: {
         token,
@@ -120,11 +122,28 @@ export class TokenRepository implements ITokenRepository {
   }
 
   async validatePasswordResetToken(token: string): Promise<string | null> {
+    // Verify token signature before database lookup
+    const [hashToken, signature] = token.split('.');
+    if (!hashToken || !signature) {
+      return null;
+    }
+
+    // Find token in database
     const resetToken = await prisma.passwordResetToken.findUnique({
       where: { token },
     });
 
     if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+      return null;
+    }
+
+    // Verify HMAC signature
+    const expiresInSeconds = Math.floor((resetToken.expiresAt.getTime() - resetToken.createdAt.getTime()) / 1000);
+    const expectedSignature = crypto.createHmac('sha256', jwtConfig.secret)
+      .update(`${resetToken.userId}:${hashToken}:${expiresInSeconds}`)
+      .digest('hex');
+
+    if (signature !== expectedSignature) {
       return null;
     }
 

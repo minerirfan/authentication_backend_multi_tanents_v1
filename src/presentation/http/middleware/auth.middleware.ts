@@ -8,17 +8,21 @@ export class AuthMiddleware {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log('[AUTH] No token provided. Headers:', req.headers);
         throw new UnauthorizedException('No token provided');
       }
 
       const token = authHeader.substring(7);
+      console.log('[AUTH] Verifying token:', token.substring(0, 20) + '...');
       const payload = JwtService.verifyToken(token);
+      console.log('[AUTH] Token verified successfully for user:', payload.userId);
 
       req.user = payload;
       req.tenantId = payload.tenantId || undefined;
 
       next();
-    } catch (error) {
+    } catch (error: any) {
+      console.log('[AUTH] Token verification failed:', error.message);
       next(new UnauthorizedException('Invalid or expired token'));
     }
   }

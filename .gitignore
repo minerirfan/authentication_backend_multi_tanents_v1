@@ -1,11 +1,48 @@
 node_modules/
 dist/
 docs/
+# Environment files
 .env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+# System files
 .DS_Store
+Thumbs.db
+# Log files
 *.log
-*.md
+logs/
+# Coverage
 coverage/
+.nyc_output/
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+# Temporary files
+*.tmp
+*.temp
+.cache/
+# Secrets (additional patterns)
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+credentials/
 

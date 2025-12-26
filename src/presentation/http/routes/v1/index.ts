@@ -8,12 +8,14 @@ import { createTenantRoutes } from './tenant.routes';
 import { createRoleSuperAdminRoutes } from './role-super-admin.routes';
 import { createUserPermissionsRoutes } from './user-permissions.routes';
 import { createHealthRoutes } from './health.routes';
+import healthCheckRoutes from './health-check.routes';
 
 export function createV1Routes(): Router {
   const router = Router();
 
   // Mount all v1 routes (controllers created here after container init)
   router.use('/health', createHealthRoutes());
+  router.use(healthCheckRoutes); // New health check routes
   router.use('/auth', createAuthRoutes());
   router.use('/users', createUserRoutes());
   router.use('/user-profiles', createUserProfileRoutes());

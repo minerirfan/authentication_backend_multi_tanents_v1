@@ -24,12 +24,12 @@ export class UserRepository implements IUserRepository {
 
   /**
    * Convert UserEntity to UserCacheDto for caching
+   * SECURITY: Password is NOT cached to prevent exposure if Redis is compromised
    */
   private entityToDto(entity: UserEntity): UserCacheDto {
     return {
       id: entity.id,
       email: entity.email.getValue(),
-      password: entity.getPassword().getValue(),
       firstName: entity.firstName,
       lastName: entity.lastName,
       tenantId: entity.tenantId,
@@ -41,12 +41,23 @@ export class UserRepository implements IUserRepository {
 
   /**
    * Convert UserCacheDto to UserEntity
+   * SECURITY: Password is fetched from database, not cache
    */
-  private dtoToEntity(dto: UserCacheDto): UserEntity {
+  private async dtoToEntity(dto: UserCacheDto): Promise<UserEntity> {
+    // Fetch password from database (not cache) for security
+    const user = await prisma.user.findUnique({
+      where: { id: dto.id },
+      select: { password: true },
+    });
+
+    if (!user) {
+      throw new Error(`User ${dto.id} not found in database`);
+    }
+
     return new UserEntity(
       dto.id,
       new Email(dto.email),
-      new Password(dto.password, true),
+      new Password(user.password, true),
       dto.firstName,
       dto.lastName,
       dto.tenantId,
@@ -63,7 +74,7 @@ export class UserRepository implements IUserRepository {
     if (this.cache) {
       const cached = await this.cache.get<UserCacheDto>(cacheKey);
       if (cached) {
-        return this.dtoToEntity(cached);
+        return await this.dtoToEntity(cached);
       }
     }
 
@@ -80,7 +91,7 @@ export class UserRepository implements IUserRepository {
 
     const entity = this.toEntity(user);
     
-    // Cache the result as DTO
+    // Cache the result as DTO (without password)
     if (this.cache) {
       const dto = this.entityToDto(entity);
       await this.cache.set(cacheKey, dto, this.USER_CACHE_TTL);
@@ -96,7 +107,7 @@ export class UserRepository implements IUserRepository {
     if (this.cache) {
       const cached = await this.cache.get<UserCacheDto>(cacheKey);
       if (cached) {
-        return this.dtoToEntity(cached);
+        return await this.dtoToEntity(cached);
       }
     }
 
@@ -113,7 +124,7 @@ export class UserRepository implements IUserRepository {
 
     const entity = this.toEntity(user);
     
-    // Cache the result as DTO
+    // Cache the result as DTO (without password)
     if (this.cache) {
       const dto = this.entityToDto(entity);
       await this.cache.set(cacheKey, dto, this.USER_CACHE_TTL);
@@ -122,6 +133,19 @@ export class UserRepository implements IUserRepository {
     }
 
     return entity;
+  }
+
+  /**
+   * Find minimal user data by email (no tenant filter)
+   * Used for login to check if email exists across all tenants
+   * Returns only ID, email, and tenantId (no password for security)
+   */
+  async findByEmailOnly(email: string): Promise<{ id: string; email: string; tenantId: string | null } | null> {
+    const user = await prisma.user.findFirst({
+      where: { email },
+      select: { id: true, email: true, tenantId: true },
+    });
+    return user;
   }
 
   async findAll(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResult<UserEntity>> {
